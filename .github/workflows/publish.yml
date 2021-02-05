@@ -1,0 +1,50 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [12.x]
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install
+        run: |
+          yarn
+      - name: lint
+        run: |
+          yarn lint
+          yarn prettier:verify
+      - name: set version
+        run: |
+          node ./scripts/set-package-version.js
+        env:
+          CI: true
+          TAG: ${{ needs.config.outputs.tag }}
+      - name: build
+        run: |
+          yarn type-check
+          yarn build --env debug
+          yarn docs
+          # check that hls.js doesn't error if requiring in node
+          # see https://github.com/video-dev/hls.js/pull/1642
+          node -e 'require("./" + require("./package.json").main)'
+          cp types/index.d.ts dist/hls.d.ts
+        env:
+          CI: true
+      - name: publish
+        run: |
+          yarn publish --access=public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
